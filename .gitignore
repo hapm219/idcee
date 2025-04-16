@@ -1,17 +1,13 @@
-# Loại trừ thư mục chứa mô hình lớn
-models/
-data/
-!data/*.py
+# Ignore data folder except Python scripts
+data/*
+!data/**/*.py
 
-# Loại trừ tất cả file văn bản đầu vào
+# Ignore models hoàn toàn
+models/
+
+# Ignore typical document and model files
 *.pdf
-*.doc
 *.docx
 *.txt
-*.json
-*.faiss
-
-# Loại trừ file cache và hệ thống
-__pycache__/
-*.pyc
-.DS_Store
+*.gguf
+*.bin
