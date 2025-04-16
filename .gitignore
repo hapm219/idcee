@@ -1,0 +1,17 @@
+# Loại trừ thư mục chứa mô hình lớn
+models/
+data/
+!data/*.py
+
+# Loại trừ tất cả file văn bản đầu vào
+*.pdf
+*.doc
+*.docx
+*.txt
+*.json
+*.faiss
+
+# Loại trừ file cache và hệ thống
+__pycache__/
+*.pyc
+.DS_Store
