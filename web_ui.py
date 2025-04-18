@@ -8,7 +8,7 @@ import json
 from pathlib import Path
 import glob
 
-TOP_K = 1
+TOP_K = 5
 INDEX_DIR = Path("data/index")
 EMBEDDING_PATH = "data/encoder/bge-m3"
 
@@ -56,6 +56,7 @@ def limit_context(chunks, max_chars=1200):
         context += c + "\n\n"
     return context.strip()
 
+# ========= STREAMLIT APP ========= #
 st.title("🤖 IDCee - RAG")
 
 query = st.text_input("Nhập câu hỏi:")
@@ -95,5 +96,15 @@ Trả lời:
                     st.markdown(f"#### 🤖 IDCee trả lời:\n\n{response.strip() + '▌'}")
             elapsed = time.time() - start
             st.caption(f"⏱️ Thời gian phản hồi: {elapsed:.2f} giây")
+
+            # 🔍 Hiển thị toàn bộ context đã dùng
+            with st.expander("🟨 Đoạn context được sử dụng"):
+                st.code(context, language="markdown")
+
+            # 📄 Hiển thị từng đoạn từ FAISS (Top K)
+            with st.expander("📄 Top K đoạn truy xuất từ FAISS"):
+                for i, chunk in enumerate(chunks):
+                    st.markdown(f"**{i+1}.** {chunk.strip()}")
+
         except Exception as e:
             st.error(f"Lỗi khi tạo câu trả lời: {e}")

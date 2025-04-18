@@ -1,91 +1,107 @@
 import os
-import faiss
+import sys
+import time
 import json
+import faiss
 import numpy as np
 from pathlib import Path
-from sentence_transformers import SentenceTransformer
 from tqdm import tqdm
+from sentence_transformers import SentenceTransformer
 
 REFINED_DIR = Path("refined")
 INDEX_DIR = Path("index")
-EMBEDDING_MODEL_NAME = "BAAI/bge-m3"
-EMBEDDING_LOCAL_PATH = Path("encoder/bge-m3")
+MODEL_DIR = Path("encoder/bge-m3")
+BATCH_SIZE = 32
 
-processed_files = 0
-all_txt_files = 0
-written_dirs = set()
+def load_model():
+    import torch
+    if not MODEL_DIR.exists() or not (MODEL_DIR / "config.json").exists():
+        print("❌ Không tìm thấy mô hình tại: encoder/bge-m3")
+        exit(1)
+    device = "mps" if torch.backends.mps.is_available() else "cpu"
+    print(f"✅ Dùng {'GPU Mac (MPS)' if device == 'mps' else 'CPU'}")
+    try:
+        model = SentenceTransformer(str(MODEL_DIR), device=device)
+        print("✅ Đã load model thành công từ: encoder/bge-m3")
+        return model
+    except Exception as e:
+        print("❌ Lỗi khi load mô hình embedding:")
+        print(e)
+        exit(1)
 
-def load_or_download_model():
-    if not EMBEDDING_LOCAL_PATH.exists():
-        print(f"⬇️ Đang tải mô hình embedding: {EMBEDDING_MODEL_NAME}")
-        model = SentenceTransformer(EMBEDDING_MODEL_NAME)
-        model.save(str(EMBEDDING_LOCAL_PATH))
-    else:
-        print(f"📥 Đang load mô hình từ thư mục cục bộ: {EMBEDDING_LOCAL_PATH}")
-        model = SentenceTransformer(str(EMBEDDING_LOCAL_PATH))
-    return model
+def get_chunks(text):
+    return [c.strip() for c in text.split("\n\n") if len(c.strip()) > 30]
 
-def process_text_file(path: Path):
-    text = path.read_text(encoding="utf-8", errors="ignore")
-    chunks = text.split("\n\n")
-    return [c.strip() for c in chunks if len(c.strip()) > 20]
+def encode_chunks(chunks, model):
+    sys.stdout.write(f"🧠 Đang encode {len(chunks)} đoạn...\033[K\r")
+    sys.stdout.flush()
+    embeddings = model.encode(
+        [f"Represent this sentence for searching relevant passages: {c}" for c in chunks],
+        batch_size=BATCH_SIZE,
+        show_progress_bar=False,
+        normalize_embeddings=False
+    )
+    return np.array(embeddings)
 
-def build_faiss_index_for_folder(folder: Path, model: SentenceTransformer):
-    global processed_files, written_dirs
-    all_texts = []
-    all_embeddings = []
+def index_folder(folder, model, bar):
+    all_texts, all_embeds = [], []
+    txt_files = list(folder.glob("*.txt"))
+    if not txt_files:
+        return 0
 
-    for txt_file in folder.glob("*.txt"):
-        texts = process_text_file(txt_file)
-        if not texts:
+    for txt_file in txt_files:
+        text = txt_file.read_text(encoding="utf-8", errors="ignore")
+        chunks = get_chunks(text)
+        if not chunks:
+            bar.update(1)
             continue
 
-        prompt_texts = [
-            f"Represent this sentence for searching relevant passages: {t}"
-            for t in texts
-        ]
-        embeddings = model.encode(prompt_texts, show_progress_bar=False, convert_to_numpy=True)
+        # ✅ Đặt log dưới thanh progress bar, ghi đè mỗi lần
+        bar.write(f"📄 File: {txt_file.relative_to(REFINED_DIR)}")
+        bar.write(f"🧠 Đang encode {len(chunks)} đoạn...\033[K\r")
 
-        all_texts.extend(texts)
-        all_embeddings.append(embeddings)
-        processed_files += 1
+        embeddings = encode_chunks(chunks, model)
+        all_texts.extend(chunks)
+        all_embeds.append(embeddings)
+        bar.update(1)
 
-    if not all_embeddings:
-        print(f"⚠️  Không có đoạn văn nào trong {folder}")
-        return
+    if not all_embeds:
+        return 0
 
-    all_embeddings = np.vstack(all_embeddings)
+    vectors = np.vstack(all_embeds)
+    index = faiss.IndexFlatL2(vectors.shape[1])
+    index.add(vectors)
 
-    index = faiss.IndexFlatL2(all_embeddings.shape[1])
-    index.add(all_embeddings)
-
-    rel_path = folder.relative_to(REFINED_DIR)
-    out_dir = INDEX_DIR / rel_path
+    out_dir = INDEX_DIR / folder.relative_to(REFINED_DIR)
     out_dir.mkdir(parents=True, exist_ok=True)
-
     faiss.write_index(index, str(out_dir / "index.faiss"))
     with open(out_dir / "mapping.json", "w", encoding="utf-8") as f:
         json.dump(all_texts, f, ensure_ascii=False, indent=2)
 
-    written_dirs.add(str(out_dir))
-    print(f"✅ Indexed {len(all_texts)} đoạn văn → {out_dir}/index.faiss")
+    bar.write(f"✅ Đã index {len(all_texts)} đoạn → {out_dir}/index.faiss")
+    return len(txt_files)
 
-def scan_and_index_all():
-    global all_txt_files
-    model = load_or_download_model()
+def main():
+    os.environ["TOKENIZERS_PARALLELISM"] = "false"
+    start_all = time.time()
 
-    folders = [f for f in REFINED_DIR.glob("**/") if any(f.glob("*.txt"))]
-    all_txt_files = sum(len(list(f.glob("*.txt"))) for f in folders)
+    folders = sorted({f.parent for f in REFINED_DIR.rglob("*.txt")})
+    files = list(REFINED_DIR.rglob("*.txt"))
+    print(f"🔍 Tìm thấy {len(folders)} thư mục | {len(files)} file cần index")
 
-    for folder in folders:
-        build_faiss_index_for_folder(folder, model)
+    model = load_model()
+    total_indexed = 0
 
-    print("\n📊 Tổng kết indexing:")
-    print(f"🔍 Số file .txt tìm thấy: {all_txt_files}")
-    print(f"✍️  Số file đã xử lý: {processed_files}")
-    print("📂 Ghi FAISS index vào các thư mục:")
-    for d in sorted(written_dirs):
-        print(f"   - {d}")
+    with tqdm(total=len(files), desc="📦 Indexing toàn bộ", ncols=80) as bar:
+        for folder in folders:
+            count = index_folder(folder, model, bar)
+            total_indexed += count
+        bar.close()
+        print()
+
+    print(f"✅ Hoàn tất. Đã index {total_indexed} file.")
+    print(f"📂 FAISS index lưu tại: {INDEX_DIR}/")
+    print(f"🕓 Tổng thời gian: {time.time() - start_all:.2f} giây")
 
 if __name__ == "__main__":
-    scan_and_index_all()
+    main()

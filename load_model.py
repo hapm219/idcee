@@ -9,9 +9,12 @@ MODEL_PATH = "models/mistral-7b-instruct-v0.2.Q4_K_M.gguf"
 
 def download_model():
     os.makedirs("models", exist_ok=True)
-    if not os.path.exists(MODEL_PATH):
-        print(f"⬇️ Đang tải mô hình từ Hugging Face: {MODEL_URL}")
-        r = requests.get(MODEL_URL, stream=True)
+    if os.path.exists(MODEL_PATH):
+        print(f"📦 Mô hình đã tồn tại: {MODEL_PATH}")
+        return
+
+    print(f"⬇️ Đang tải mô hình từ Hugging Face: {MODEL_URL}")
+    with requests.get(MODEL_URL, stream=True) as r:
         r.raise_for_status()
         total_size = int(r.headers.get("Content-Length", 0))
 
@@ -21,10 +24,7 @@ def download_model():
             for chunk in r.iter_content(chunk_size=8192):
                 f.write(chunk)
                 pbar.update(len(chunk))
-
-        print(f"✅ Đã tải xong mô hình: {MODEL_PATH}")
-    else:
-        print(f"📦 Mô hình đã tồn tại: {MODEL_PATH}")
+    print(f"✅ Đã tải xong mô hình: {MODEL_PATH}")
 
 def load_llm():
     download_model()
@@ -34,9 +34,9 @@ def load_llm():
     llm = AutoModelForCausalLM.from_pretrained(
         MODEL_PATH,
         model_type="mistral",
-        gpu_layers=40,               # ✅ Ưu tiên dùng CPU
+        gpu_layers=40,
         max_new_tokens=256,
-        context_length=2048  # ✅ ép sử dụng đúng context từ file
+        context_length=2048
     )
 
     elapsed = time.time() - start
