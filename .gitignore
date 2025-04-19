@@ -1,13 +1,11 @@
-# Ignore data folder except Python scripts
-data/*
-!data/**/*.py
+# Ignore everything
+**
 
-# Ignore models hoàn toàn
-models/
+# Nhưng cho phép thư mục (để giữ cấu trúc)
+!*/
 
-# Ignore typical document and model files
-*.pdf
-*.docx
-*.txt
-*.gguf
-*.bin
+# Cho phép file .py ở mọi cấp
+!**/*.py
+
+# Cho phép giữ lại file .gitignore
+!.gitignore
