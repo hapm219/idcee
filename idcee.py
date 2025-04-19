@@ -9,7 +9,7 @@ from sentence_transformers import SentenceTransformer
 
 from load_model import load_llm
 
-# ===== CẤU HÌNH =====
+# ===== CẤU HÌNH ========
 TOP_K = 1
 INDEX_DIR = Path("data/index")
 EMBEDDING_PATH = "data/encoder/bge-m3"
@@ -90,10 +90,14 @@ def main():
 
         start = time.time()
         try:
-            response = llm(prompt, max_new_tokens=192, stop=["###", "Câu hỏi:"])
+            response = llm(prompt, max_tokens=192, stop=["###", "Câu hỏi:"])
+            reply = response["choices"][0]["text"].strip()
             elapsed = time.time() - start
-            reply = response.strip() if response and response.strip() else "(Không thể tạo câu trả lời)"
-            print(f"🤖 IDCee: {reply}")
+
+            if not reply:
+                print("🤖 IDCee: (Không thể tạo câu trả lời)")
+            else:
+                print(f"🤖 IDCee: {reply}")
             print(f"⏱️ Thời gian phản hồi: {elapsed:.2f} giây\n")
         except Exception as e:
             print(f"❌ Lỗi infer: {e}")

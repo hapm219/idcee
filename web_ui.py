@@ -89,19 +89,16 @@ Trả lời:
 """
 
         try:
-            response = ""
-            with st.empty():
-                for chunk in st.session_state.llm(prompt, max_new_tokens=192, stop=["###", "Câu hỏi:"], stream=True):
-                    response += chunk
-                    st.markdown(f"#### 🤖 IDCee trả lời:\n\n{response.strip() + '▌'}")
+            result = st.session_state.llm(prompt, max_tokens=192, stop=["###", "Câu hỏi:"])
+            response = result["choices"][0]["text"].strip()
             elapsed = time.time() - start
+
+            st.markdown(f"#### 🤖 IDCee trả lời:\n\n{response}")
             st.caption(f"⏱️ Thời gian phản hồi: {elapsed:.2f} giây")
 
-            # 🔍 Hiển thị toàn bộ context đã dùng
             with st.expander("🟨 Đoạn context được sử dụng"):
                 st.code(context, language="markdown")
 
-            # 📄 Hiển thị từng đoạn từ FAISS (Top K)
             with st.expander("📄 Top K đoạn truy xuất từ FAISS"):
                 for i, chunk in enumerate(chunks):
                     st.markdown(f"**{i+1}.** {chunk.strip()}")

@@ -2,7 +2,7 @@ import os
 import time
 import requests
 from tqdm import tqdm
-from ctransformers import AutoModelForCausalLM
+from llama_cpp import Llama  # ✅ Sửa: dùng llama.cpp thay vì ctransformers
 
 MODEL_URL = "https://huggingface.co/TheBloke/Mistral-7B-Instruct-v0.2-GGUF/resolve/main/mistral-7b-instruct-v0.2.Q4_K_M.gguf"
 MODEL_PATH = "models/mistral-7b-instruct-v0.2.Q4_K_M.gguf"
@@ -31,19 +31,17 @@ def load_llm():
     print(f"\n🧠 Đang load mô hình GGUF từ: {MODEL_PATH}")
     start = time.time()
 
-    llm = AutoModelForCausalLM.from_pretrained(
-        MODEL_PATH,
-        model_type="mistral",
-        gpu_layers=40,
-        max_new_tokens=256,
-        context_length=2048
+    llm = Llama(
+        model_path=MODEL_PATH,
+        n_ctx=2048,
+        n_threads=os.cpu_count(),
+        n_gpu_layers=-1,       # ✅ Sử dụng full GPU trên Mac (Metal)
+        use_mlock=True,
+        verbose=False
     )
 
     elapsed = time.time() - start
-    device = "GPU" if getattr(llm.config, "gpu_layers", 0) > 0 else "CPU"
-    context_len = getattr(llm, "context_length", "Không xác định")
-
-    print(f"✅ Đã load mô hình trên {device} - Thời gian: {elapsed:.2f} giây")
-    print(f"📏 Context length hỗ trợ: {context_len} tokens")
+    print(f"✅ Đã load mô hình trên GPU (Metal) - Thời gian: {elapsed:.2f} giây")
+    print(f"📏 Context length hỗ trợ: {llm.n_ctx} tokens")
 
     return llm
