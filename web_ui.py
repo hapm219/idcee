@@ -8,7 +8,7 @@ import json
 from pathlib import Path
 import glob
 
-TOP_K = 5
+TOP_K = 3
 INDEX_DIR = Path("data/index")
 EMBEDDING_PATH = "data/encoder/bge-m3"
 
@@ -48,7 +48,7 @@ def search_similar_chunks(query, model, all_indexes, all_mappings, top_k=TOP_K):
     results = sorted(results, key=lambda x: x[0])[:top_k]
     return [r[1] for r in results]
 
-def limit_context(chunks, max_chars=1200):
+def limit_context(chunks, max_chars=800):
     context = ""
     for c in chunks:
         if len(context) + len(c) > max_chars:
@@ -71,7 +71,12 @@ if "llm" not in st.session_state:
 if query:
     with st.spinner("🧠 Đang tìm câu trả lời..."):
         start = time.time()
-        chunks = search_similar_chunks(query, st.session_state.embedding, st.session_state.indexes, st.session_state.mappings)
+        chunks = search_similar_chunks(
+            query,
+            st.session_state.embedding,
+            st.session_state.indexes,
+            st.session_state.mappings
+        )
         context = limit_context(chunks)
 
         prompt = f"""Bạn là trợ lý AI IDCee. Trả lời ngắn gọn, bằng tiếng Việt và chỉ dựa vào phần Thông tin nội bộ bên dưới.
@@ -89,11 +94,33 @@ Trả lời:
 """
 
         try:
-            result = st.session_state.llm(prompt, max_tokens=192, stop=["###", "Câu hỏi:"])
-            response = result["choices"][0]["text"].strip()
-            elapsed = time.time() - start
+            response = ""
+            display = st.empty()
 
-            st.markdown(f"#### 🤖 IDCee trả lời:\n\n{response}")
+            result = st.session_state.llm(prompt, max_tokens=192, stream=True)
+
+            # ✅ Xử lý đúng định dạng dict từ stream
+            if hasattr(result, "__iter__") and not isinstance(result, dict):
+                for chunk in result:
+                    if isinstance(chunk, dict) and "choices" in chunk:
+                        delta = chunk["choices"][0]["text"]
+                    else:
+                        delta = str(chunk)
+                    response += delta
+                    display.markdown(f"#### 🤖 IDCee trả lời:\n\n{response.strip() + '▌'}")
+                display.markdown(f"#### 🤖 IDCee trả lời:\n\n{response.strip()}")
+
+            elif isinstance(result, str):
+                display.markdown(f"#### 🤖 IDCee trả lời:\n\n{result.strip()}")
+
+            elif isinstance(result, dict) and "choices" in result:
+                response = result["choices"][0]["text"].strip()
+                display.markdown(f"#### 🤖 IDCee trả lời:\n\n{response}")
+
+            else:
+                display.markdown("🤖 IDCee: (Không thể xử lý phản hồi)")
+
+            elapsed = time.time() - start
             st.caption(f"⏱️ Thời gian phản hồi: {elapsed:.2f} giây")
 
             with st.expander("🟨 Đoạn context được sử dụng"):
